@@ -1,0 +1,734 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}[hidden]{display:none!important}</style></head><body><title>Pico</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  /* Layout: uma tela só. Cabeçalho com humor, balão de fala, o bot no centro, barra de ações embaixo. */
+  :root {
+    --bg: #F1E6D4;
+    --surface: #FBF3E4;
+    --chassis: #FFF9EE;
+    --chassis-edge: #DCC9A8;
+    --ink: #2A1F17;
+    --ink-soft: #6B5A49;
+    --accent: #D9541E;
+    --on-accent: #FFFFFF;
+    --track: #DCCBB0;
+    --screen: #0E0B09;
+    --screen-edge: #2B221B;
+    --overlay: rgba(30, 20, 12, .45);
+    --display: 'Fredoka', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif;
+    --body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16110E; --surface: #241C17; --chassis: #EFE2CC; --chassis-edge: #A89070;
+      --ink: #F7EBDB; --ink-soft: #BBA791; --accent: #FF9157; --on-accent: #2A1408;
+      --track: #3B2F26; --screen: #0A0807; --screen-edge: #2B221B; --overlay: rgba(0, 0, 0, .6);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16110E; --surface: #241C17; --chassis: #EFE2CC; --chassis-edge: #A89070;
+    --ink: #F7EBDB; --ink-soft: #BBA791; --accent: #FF9157; --on-accent: #2A1408;
+    --track: #3B2F26; --screen: #0A0807; --screen-edge: #2B221B; --overlay: rgba(0, 0, 0, .6);
+    color-scheme: dark;
+  }
+
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 0;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow-x: hidden;
+  }
+  #app { height: 100%; display: flex; flex-direction: column; max-width: 520px; margin: 0 auto; }
+
+  header { height: 112px; flex: none; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+  .title { display: flex; align-items: baseline; gap: 12px; }
+  h1 { margin: 0; font: 600 32px/1 var(--display); }
+  #mood { font: 500 20px/1 var(--display); color: var(--ink-soft); }
+  .meters { display: flex; gap: 24px; }
+  .meter { flex: 1; min-width: 0; display: grid; gap: 4px; }
+  .meter span { font: 500 14px/1 var(--display); color: var(--ink-soft); }
+  .track { height: 10px; border-radius: 999px; background: var(--track); overflow: hidden; }
+  .fill { height: 100%; width: 50%; border-radius: 999px; background: var(--accent); transition: width .6s ease; }
+
+  main { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #slot { min-height: 76px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 12px; width: 100%; }
+  #bubble {
+    position: relative; max-width: 100%; padding: 12px 16px; border-radius: 20px;
+    background: var(--surface); border: 1px solid var(--track);
+    font: 500 20px/1.25 var(--display); text-align: center;
+    opacity: 0; transition: opacity .25s ease;
+  }
+  #bubble.on { opacity: 1; transition-duration: .15s; }
+  #bubble::after {
+    content: ""; position: absolute; left: 50%; bottom: -8px; width: 14px; height: 14px; margin-left: -7px;
+    background: var(--surface); border-right: 1px solid var(--track); border-bottom: 1px solid var(--track);
+    transform: rotate(45deg);
+  }
+
+  #bot { width: min(100%, 440px, max(240px, calc((100dvh - 372px - 40px) / .78 + 40px))); touch-action: none; cursor: pointer; transition: transform .12s ease; outline: none; }
+  #bot.pressed { transform: scale(.97); }
+  #body { transform-origin: 50% 60%; animation: breathe 6s ease-in-out infinite alternate; }
+  #chassis { padding: 20px; border-radius: 48px; background: var(--chassis); border: 2px solid var(--chassis-edge); box-shadow: 0 8px 16px rgba(42, 31, 23, .2); }
+  #screen { display: block; width: 100%; height: auto; aspect-ratio: 300 / 234; border: 2px solid var(--screen-edge); border-radius: 28px; box-sizing: border-box; background: var(--screen); }
+  .feet { display: flex; justify-content: space-around; padding: 0 56px; margin-top: -2px; }
+  .feet i { width: 64px; height: 24px; border-radius: 0 0 16px 16px; background: var(--chassis-edge); }
+
+  .bgfill { fill: var(--screen); }
+  .talk { animation: talk .42s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  .spin { animation: spin .9s linear infinite; transform-box: fill-box; transform-origin: center; }
+  .bit { animation: rise 2.1s ease-out infinite; }
+  .bit:nth-child(2) { animation-delay: .7s; }
+  .bit:nth-child(3) { animation-delay: 1.4s; }
+  .bit text { font: 600 22px var(--display); }
+
+  [data-e="sleepy"] #body, [data-e="sleeping"] #body { animation: breathe 4.4s ease-in-out infinite alternate; }
+  [data-e="dance"] #body { animation: dance .52s ease-in-out infinite alternate; }
+  [data-e="happy"] #body { animation: hop .6s ease-out 1; }
+  [data-e="love"] #body { animation: pulse 1s ease-in-out infinite alternate; }
+  [data-e="dizzy"] #body { animation: wobble .44s ease-in-out infinite alternate; }
+  [data-e="angry"] #body { animation: shake .09s linear infinite alternate; }
+  [data-e="surprised"] #body { animation: pop .34s ease-out 1; }
+  [data-e="sad"] #body { animation: none; transform: translateY(4px); }
+  [data-e="listening"] #body { animation: none; transform: scale(1.02); }
+
+  @keyframes breathe { from { transform: scale(1); } to { transform: scale(1.015); } }
+  @keyframes dance { from { transform: rotate(-6deg) translateY(-12px); } to { transform: rotate(6deg) translateY(0); } }
+  @keyframes hop { 0%, 100% { transform: translateY(0); } 25% { transform: translateY(-10px); } 50% { transform: translateY(0); } 75% { transform: translateY(-6px); } }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.03); } }
+  @keyframes wobble { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+  @keyframes shake { from { transform: translateX(-3px); } to { transform: translateX(3px); } }
+  @keyframes pop { 0% { transform: scale(1) translateY(0); } 40% { transform: scale(1.05) translateY(-8px); } 100% { transform: scale(1) translateY(0); } }
+  @keyframes talk { 0%, 100% { transform: scaleY(.2); } 30% { transform: scaleY(1); } 60% { transform: scaleY(.45); } 80% { transform: scaleY(.85); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes rise { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(-80px); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    #body, .talk, .spin, .bit { animation: none !important; }
+  }
+
+  #status { margin: 0; text-align: center; font-size: 14px; color: var(--ink-soft); min-height: 20px; padding-top: 8px; }
+  nav { flex: none; height: 112px; display: flex; justify-content: space-around; align-items: center; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  nav button { all: unset; box-sizing: border-box; display: grid; justify-items: center; gap: 4px; min-width: 72px; cursor: pointer; font: 500 14px/1 var(--display); color: var(--ink-soft); }
+  nav button:active { opacity: .7; }
+  nav button:focus-visible, #bot:focus-visible, #close:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 16px; }
+  .circle { width: 60px; height: 60px; border-radius: 999px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--track); color: var(--ink); }
+  .circle svg { width: 26px; height: 26px; }
+  nav button[aria-pressed="true"] .circle { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  nav button[aria-pressed="true"] { color: var(--ink); }
+
+  #tips { position: fixed; inset: 0; background: var(--overlay); display: flex; align-items: flex-end; justify-content: center; z-index: 20; }
+  #sheet { width: 100%; max-width: 520px; max-height: 82%; display: flex; flex-direction: column; gap: 16px; padding: 24px max(24px, env(safe-area-inset-left, 0px)) max(24px, env(safe-area-inset-bottom, 0px)); box-sizing: border-box; background: var(--bg); border-radius: 32px 32px 0 0; user-select: text; -webkit-user-select: text; }
+  #sheet h2 { margin: 0; font: 600 24px/1.2 var(--display); text-wrap: balance; }
+  #sheet .scroll { overflow-y: auto; display: grid; gap: 20px; }
+  #sheet h3 { margin: 0 0 6px; font: 600 20px/1.2 var(--display); color: var(--accent); }
+  #sheet ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; line-height: 1.45; }
+  #close { all: unset; box-sizing: border-box; min-height: 52px; border-radius: 999px; background: var(--accent); color: var(--on-accent); text-align: center; font: 600 20px/52px var(--display); cursor: pointer; }
+</style>
+
+<div id="app" data-e="idle">
+  <header>
+    <div class="title"><h1>Pico</h1><span id="mood" aria-live="polite">Tranquilo</span></div>
+    <div class="meters">
+      <div class="meter" role="progressbar" aria-label="Carinho" aria-valuemin="0" aria-valuemax="100" id="m-aff"><span>Carinho</span><div class="track"><div class="fill" id="f-aff"></div></div></div>
+      <div class="meter" role="progressbar" aria-label="Energia" aria-valuemin="0" aria-valuemax="100" id="m-ene"><span>Energia</span><div class="track"><div class="fill" id="f-ene"></div></div></div>
+    </div>
+  </header>
+
+  <main>
+    <div id="slot" aria-live="polite"><div id="bubble"></div></div>
+    <div id="bot" tabindex="0" role="button" aria-label="Pico, seu bot. Toque, passe o dedo ou segure para interagir.">
+      <div id="body">
+        <div id="chassis">
+          <svg id="screen" viewBox="0 0 300 234" aria-hidden="true">
+            <g id="cheeks"></g>
+            <g id="eyesWrap"><g id="eyes"></g></g>
+            <g id="mouthWrap"><g id="mouth"></g></g>
+            <g id="bits"></g>
+          </svg>
+        </div>
+        <div class="feet"><i></i><i></i></div>
+      </div>
+    </div>
+    <p id="status"></p>
+  </main>
+
+  <nav>
+    <button id="b-voice" aria-pressed="false" aria-label="Voz. Liga ou desliga o microfone para o Pico ouvir você">
+      <span class="circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>Voz
+    </button>
+    <button id="b-sound" aria-pressed="true" aria-label="Som. Liga ou desliga a voz do Pico">
+      <span class="circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path id="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></span>Som
+    </button>
+    <button id="b-tips" aria-label="Dicas de como brincar">
+      <span class="circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7M12 17h.01"/></svg></span>Dicas
+    </button>
+  </nav>
+</div>
+
+<div id="tips" hidden role="dialog" aria-modal="true" aria-label="Como brincar com o Pico">
+  <div id="sheet">
+    <h2>Como brincar com o Pico</h2>
+    <div class="scroll">
+      <section><h3>Toque</h3><ul>
+        <li>Toque uma vez: ele reage.</li>
+        <li>Toque várias vezes seguidas: ele ri, se irrita… e fica tonto.</li>
+        <li>Passe o dedo de um lado a outro: carinho.</li>
+        <li>Segure o dedo parado: ele ronrona.</li>
+        <li>Os olhos seguem o seu dedo.</li>
+      </ul></section>
+      <section><h3>Movimento</h3><ul>
+        <li>Sacuda o celular: ele fica tonto.</li>
+        <li>Gire o celular rápido: ele roda junto.</li>
+        <li>Vire de cabeça para baixo: ele reclama.</li>
+        <li>Incline: os olhos acompanham.</li>
+      </ul></section>
+      <section><h3>Voz</h3><ul>
+        <li>Toque em Voz e fale: “oi”, “dança”, “conta uma piada”, “boa noite”, “te amo”, “que horas são”, “como você está”.</li>
+        <li>Funciona melhor no Chrome do Android.</li>
+      </ul></section>
+      <section><h3>Sensores e microfone</h3><ul>
+        <li id="tip-env">Se o status abaixo do Pico disser que algo está indisponível, abra a página direto no navegador do celular. Dentro de visualizadores o aparelho bloqueia sensores e microfone.</li>
+      </ul></section>
+    </div>
+    <button id="close" type="button">Entendi</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------- Configuração (ajuste fino) ---------- */
+  const CFG = {
+    sleepyAfterMs: 40000, sleepAfterMs: 75000, awayMs: 6 * 3600 * 1000,
+    tiltSignX: -1, tiltSignY: -1, tiltGain: 2.4,       // se os olhos olharem para o lado errado, troque o sinal
+    shakePeakG: 2.0, shakeCount: 3, shakeWindowMs: 1200, shakeCooldownMs: 2500,
+    freeFallG: 0.3, freeFallMs: 180,
+    spinRad: 4, spinMs: 700,
+    flipDot: -0.5, flipMs: 400,
+    petPath: 260, holdMs: 650,
+  };
+  const KEY = 'pico:web:v1';
+
+  const COLOR = { idle: '#FFC857', happy: '#FFC857', love: '#FF6B8A', sleepy: '#C9B27A', sleeping: '#8C7C5A', surprised: '#FFF1C2', dizzy: '#C9A8FF', angry: '#FF5A3C', sad: '#7FB2FF', listening: '#6FE3C1', dance: '#FFB02E' };
+  const PRI = { idle: 0, sleepy: 1, sleeping: 1, listening: 2, happy: 3, love: 3, sad: 3, dance: 4, angry: 4, surprised: 5, dizzy: 5 };
+  const LABEL = { idle: 'Tranquilo', happy: 'Feliz', love: 'Apaixonado', sleepy: 'Com sono', sleeping: 'Dormindo', surprised: 'Surpreso', dizzy: 'Tonto', angry: 'Bravo', sad: 'Triste', listening: 'Ouvindo', dance: 'Dançando' };
+
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const $ = (s) => document.querySelector(s);
+
+  const P = {
+    hello: ['Oi! Que bom te ver!', 'Opa, cheguei!', 'Oii! Tava esperando você.'],
+    miss: ['Você voltou! Tava com saudade!', 'Finalmente! Fiquei te esperando!'],
+    wake: ['Hã? Que foi?!', 'Uau! Acordei!', 'Opa! Tava sonhando...'],
+    poke: ['Hihi!', 'Oi!', 'Eita!', 'Tô aqui!', 'Fui cutucado!'],
+    giggle: ['Hihihi, faz cócegas!', 'Ei, de novo não!', 'Hahaha!'],
+    annoyed: ['Para de me cutucar!', 'Ei! Chega!', 'Grrr... tá bom, já deu!'],
+    tooMuch: ['Chega! Tô tonto!', 'Uuuuu, tudo girando!'],
+    pet: ['Aaah, que gostoso...', 'Mais um pouquinho!', 'Adoro carinho!', 'Prrrr...'],
+    hold: ['Prrrrr...', 'Que quentinho...'],
+    dizzy: ['Uuuuu, tô tonto!', 'Tudo girando!', 'Ai ai ai...'],
+    spin: ['Tô girando! Whee!', 'Que tontura!'],
+    flip: ['Ei! Tá tudo de cabeça pra baixo!', 'Me desvira, por favor!'],
+    fall: ['Aaaaah!', 'Socorro, tô caindo!'],
+    confused: ['Hã? Não entendi, mas gostei!', 'Hmm... fala de novo?', 'Não peguei essa, hihi.'],
+    jokes: ['O que o robô disse pro cabo? Você me completa!', 'Por que o robô nunca tem medo? Tem nervos de aço!', 'Qual o doce favorito do robô? Pé de moleque... de parafuso!'],
+  };
+
+  /* ---------- Estado ---------- */
+  let emotion = 'idle', holdUntil = 0, lastInteraction = Date.now(), talkingUntil = 0;
+  let emoTimer = 0, msgTimer = 0, message = null;
+  let stats = { affection: 50, energy: 80 };
+  let soundOn = true, voiceOn = false;
+
+  const isTalking = () => Date.now() < talkingUntil;
+
+  function load() {
+    try {
+      const j = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (j && j.stats) {
+        stats = { affection: clamp(+j.stats.affection || 50, 0, 100), energy: clamp(+j.stats.energy || 80, 0, 100) };
+        soundOn = j.soundOn !== false;
+        return Date.now() - (j.lastSeen || Date.now());
+      }
+    } catch (e) { /* sem armazenamento: segue sem salvar */ }
+    return 0;
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify({ stats, soundOn, lastSeen: Date.now() })); } catch (e) { /* ignora */ }
+  }
+
+  /* ---------- Rosto (SVG) ---------- */
+  const CY = 100, LX = 90, RX = 210;
+  const pill = (cx, h, c) =>
+    `<rect x="${cx - 26}" y="${CY - h / 2}" width="52" height="${h}" rx="26" fill="${c}" stroke="${c}" stroke-width="18" stroke-opacity=".16"/>` +
+    `<rect x="${cx - 26}" y="${CY - h / 2}" width="52" height="${h}" rx="26" fill="${c}"/>`;
+  function spiral(cx, dir) {
+    let d = '';
+    for (let i = 0; i <= 60; i++) {
+      const t = i * 0.2, r = 2 + t * 2.7;
+      d += (i ? 'L' : 'M') + (cx + r * Math.cos(dir * t)).toFixed(1) + ' ' + (CY + r * Math.sin(dir * t)).toFixed(1) + ' ';
+    }
+    return d;
+  }
+  function eye(e, cx, side, c) {
+    switch (e) {
+      case 'listening': return pill(cx, 90, c);
+      case 'happy': case 'dance': {
+        const d = `M${cx - 28} ${CY + 16} Q${cx} ${CY - 32} ${cx + 28} ${CY + 16}`;
+        return `<path d="${d}" stroke="${c}" stroke-width="26" stroke-opacity=".16" stroke-linecap="round" fill="none"/><path d="${d}" stroke="${c}" stroke-width="14" stroke-linecap="round" fill="none"/>`;
+      }
+      case 'love': {
+        const d = `M${cx} ${CY + 30} C${cx - 52} ${CY - 6} ${cx - 32} ${CY - 44} ${cx} ${CY - 16} C${cx + 32} ${CY - 44} ${cx + 52} ${CY - 6} ${cx} ${CY + 30} Z`;
+        return `<path d="${d}" fill="${c}" stroke="${c}" stroke-width="14" stroke-opacity=".16" stroke-linejoin="round"/><path d="${d}" fill="${c}"/>`;
+      }
+      case 'sleepy':
+        return `<path d="M${cx - 28} ${CY + 6} H${cx + 28} A28 28 0 0 1 ${cx - 28} ${CY + 6} Z" fill="${c}"/>`;
+      case 'sleeping':
+        return `<path d="M${cx - 26} ${CY} Q${cx} ${CY + 24} ${cx + 26} ${CY}" stroke="${c}" stroke-width="10" stroke-linecap="round" fill="none"/>`;
+      case 'surprised':
+        return `<circle cx="${cx}" cy="${CY}" r="34" fill="${c}" stroke="${c}" stroke-width="18" stroke-opacity=".16"/><circle cx="${cx}" cy="${CY}" r="34" fill="${c}"/><circle cx="${cx}" cy="${CY}" r="10" class="bgfill"/>`;
+      case 'dizzy':
+        return `<g class="spin"><path d="${spiral(cx, side === 'l' ? 1 : -1)}" stroke="${c}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g>`;
+      case 'angry': {
+        const pts = side === 'l'
+          ? `${cx - 34},${CY - 62} ${cx + 34},${CY - 62} ${cx + 34},${CY - 2} ${cx - 34},${CY - 28}`
+          : `${cx - 34},${CY - 62} ${cx + 34},${CY - 62} ${cx + 34},${CY - 28} ${cx - 34},${CY - 2}`;
+        return pill(cx, 76, c) + `<polygon points="${pts}" class="bgfill"/>`;
+      }
+      case 'sad': {
+        const pts = side === 'l'
+          ? `${cx - 34},${CY - 62} ${cx + 34},${CY - 62} ${cx + 34},${CY - 28} ${cx - 34},${CY - 2}`
+          : `${cx - 34},${CY - 62} ${cx + 34},${CY - 62} ${cx + 34},${CY - 2} ${cx - 34},${CY - 28}`;
+        return pill(cx, 76, c) + `<polygon points="${pts}" class="bgfill"/><circle cx="${side === 'l' ? cx - 16 : cx + 16}" cy="${CY + 46}" r="5" fill="#9CC8FF"/>`;
+      }
+      default: return pill(cx, 76, c);
+    }
+  }
+  function mouth(e, c, talking) {
+    const s = `stroke="${c}" stroke-width="6" stroke-linecap="round" fill="none"`;
+    if (talking && e !== 'sleeping') return `<ellipse class="talk" cx="60" cy="24" rx="22" ry="16" fill="${c}"/>`;
+    switch (e) {
+      case 'happy': case 'dance': return `<path d="M34 12 Q60 50 86 12 Z" fill="${c}"/>`;
+      case 'love': return `<path d="M40 14 Q60 42 80 14 Z" fill="${c}"/>`;
+      case 'sleepy': return `<path d="M50 22 H70" ${s}/>`;
+      case 'sleeping': return `<path d="M52 22 Q60 28 68 22" ${s}/>`;
+      case 'surprised': return `<ellipse cx="60" cy="24" rx="9" ry="12" fill="${c}"/>`;
+      case 'dizzy': return `<path d="M30 24 Q40 14 50 24 T70 24 T90 24" ${s}/>`;
+      case 'angry': return `<path d="M42 30 Q60 16 78 30" ${s}/>`;
+      case 'sad': return `<path d="M44 32 Q60 20 76 32" ${s}/>`;
+      default: return `<path d="M42 18 Q60 30 78 18" ${s}/>`;
+    }
+  }
+  function bits(e, c) {
+    const kind = e === 'love' ? 'heart' : (e === 'sleeping' || e === 'sleepy') ? 'z' : e === 'dance' ? 'note' : null;
+    if (!kind) return '';
+    return [60, 150, 240].map((x, i) => {
+      const inner = kind === 'heart'
+        ? `<path transform="translate(${x} 150) scale(.38)" d="M0 22 C-26 4 -20 -18 0 -6 C20 -18 26 4 0 22 Z" fill="${c}"/>`
+        : `<text x="${x}" y="150" fill="${c}" font-size="${kind === 'z' ? 20 + i * 4 : 24}">${kind === 'z' ? 'z' : '♪'}</text>`;
+      return `<g class="bit">${inner}</g>`;
+    }).join('');
+  }
+
+  const el = { app: $('#app'), mood: $('#mood'), bubble: $('#bubble'), eyes: $('#eyes'), eyesWrap: $('#eyesWrap'), mouth: $('#mouth'), mouthWrap: $('#mouthWrap'), cheeks: $('#cheeks'), bits: $('#bits'), status: $('#status'), bot: $('#bot') };
+  let lastKey = '';
+
+  function draw() {
+    const talking = message !== null;
+    const key = emotion + (talking ? 't' : '');
+    el.app.dataset.e = emotion;
+    el.mood.textContent = LABEL[emotion];
+    el.bubble.classList.toggle('on', talking);
+    if (talking) el.bubble.textContent = message;
+    if (key !== lastKey) {
+      lastKey = key;
+      const c = COLOR[emotion];
+      el.eyes.innerHTML = eye(emotion, LX, 'l', c) + eye(emotion, RX, 'r', c);
+      el.mouth.innerHTML = `<g transform="translate(96 145) scale(.9)">${mouth(emotion, c, talking)}</g>`;
+      el.cheeks.innerHTML = (emotion === 'happy' || emotion === 'love' || emotion === 'dance')
+        ? '<ellipse cx="42" cy="146" rx="15" ry="9" fill="#FF8FA3" opacity=".32"/><ellipse cx="258" cy="146" rx="15" ry="9" fill="#FF8FA3" opacity=".32"/>' : '';
+      el.bits.innerHTML = bits(emotion, c);
+    }
+  }
+  function drawMeters() {
+    $('#f-aff').style.width = stats.affection + '%';
+    $('#f-ene').style.width = stats.energy + '%';
+    $('#m-aff').setAttribute('aria-valuenow', Math.round(stats.affection));
+    $('#m-ene').setAttribute('aria-valuenow', Math.round(stats.energy));
+  }
+
+  /* ---------- Cérebro ---------- */
+  function speak(t) {
+    if (!soundOn || !('speechSynthesis' in window)) return;
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(t);
+      u.lang = 'pt-BR'; u.pitch = 1.7; u.rate = 1.05;
+      speechSynthesis.speak(u);
+    } catch (e) { /* sem voz do sistema */ }
+  }
+  function say(t) {
+    message = t;
+    const dur = Math.max(2200, t.length * 75);
+    talkingUntil = Date.now() + dur + 500;
+    clearTimeout(msgTimer);
+    msgTimer = setTimeout(() => { message = null; draw(); }, dur);
+    speak(t);
+  }
+  function vibe(k) {
+    try {
+      const p = { light: 10, success: [15, 40, 15], warning: [30, 40, 30], heavy: 60 }[k];
+      if (p && navigator.vibrate) navigator.vibrate(p);
+    } catch (e) { /* iPhone não vibra pelo navegador */ }
+  }
+  function bump(a, en) {
+    if (!a && !en) return;
+    stats.affection = clamp(stats.affection + a, 0, 100);
+    stats.energy = clamp(stats.energy + en, 0, 100);
+    drawMeters();
+  }
+  function emote(e, o = {}) {
+    const now = Date.now();
+    if (!o.force && !o.system && now < holdUntil && PRI[e] < PRI[emotion]) return false;
+    if (!o.system) lastInteraction = now;
+    emotion = e;
+    clearTimeout(emoTimer);
+    const ms = o.ms === undefined ? 1600 : o.ms;
+    if (ms > 0) {
+      holdUntil = now + ms;
+      emoTimer = setTimeout(() => { holdUntil = 0; emotion = 'idle'; draw(); }, ms);
+    } else holdUntil = 0;
+    if (o.say) say(o.say);
+    bump(o.affection || 0, o.energy || 0);
+    if (o.haptic) vibe(o.haptic);
+    draw();
+    return true;
+  }
+  /** Chame no início de toda interação. Retorna true se acordou o bot. */
+  function interact() {
+    lastInteraction = Date.now();
+    if (emotion === 'sleeping' || emotion === 'sleepy') {
+      emote('surprised', { ms: 900, say: pick(P.wake), force: true, haptic: 'light' });
+      return true;
+    }
+    return false;
+  }
+
+  setInterval(() => {
+    const idle = Date.now() - lastInteraction;
+    if (emotion === 'idle') {
+      if (idle > CFG.sleepyAfterMs || (stats.energy < 15 && idle > 8000)) emote('sleepy', { ms: 0, system: true });
+    } else if (emotion === 'sleepy' && idle > CFG.sleepAfterMs) emote('sleeping', { ms: 0, system: true });
+  }, 1000);
+  setInterval(() => {
+    const sl = emotion === 'sleeping';
+    stats.affection = clamp(stats.affection - (sl ? 0.01 : 0.04), 0, 100);
+    stats.energy = clamp(stats.energy + (sl ? 1 : -0.25), 0, 100);
+    drawMeters(); save();
+  }, 10000);
+
+  /* ---------- Comandos de voz ---------- */
+  const norm = (s) => ' ' + s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9\s]/g, ' ') + ' ';
+  function parseCommand(raw) {
+    const t = norm(raw);
+    const has = (re) => re.test(t);
+    if (has(/ (acorda|acordar|levanta|bom dia) /)) return { e: 'surprised', say: pick(P.wake), ms: 1200 };
+    if (has(/ (dorm\w*|boa noite|descansa|sono) /)) return { e: 'sleeping', say: 'Boa noite... zzz', ms: 0 };
+    if (has(/ (te amo|fofo|fofinho|lindo|linda|gosto de voce|amigo|carinho) /)) return { e: 'love', say: 'Também te adoro!', ms: 3000, aff: 4 };
+    if (has(/ (danca|dance|dancar|musica) /)) return { e: 'dance', say: 'Bora dançar!', ms: 5000, aff: 1 };
+    if (has(/ (piada|conta uma) /)) return { e: 'happy', say: pick(P.jokes), ms: 5000 };
+    if (has(/ (como voce esta|como vai|tudo bem|esta bem) /)) {
+      if (stats.energy < 25) return { e: 'sleepy', say: 'Meio cansado... quero dormir.', ms: 2500 };
+      if (stats.affection > 60) return { e: 'love', say: 'Ótimo! Com você aqui, melhor ainda!', ms: 2500 };
+      return { e: 'happy', say: 'Tô bem! E você?', ms: 2200 };
+    }
+    if (has(/ (qual (e )?o? ?seu nome|quem e voce|como voce se chama) /)) return { e: 'happy', say: 'Eu sou o Pico! Prazer!', ms: 2500 };
+    if (has(/ (que horas|horas sao|hora e) /)) {
+      const d = new Date();
+      return { e: 'happy', say: `Agora são ${String(d.getHours()).padStart(2, '0')} e ${String(d.getMinutes()).padStart(2, '0')}.`, ms: 2500 };
+    }
+    if (has(/ (tonto|gira|girando|rodar) /)) return { e: 'dizzy', say: pick(P.dizzy), ms: 3000 };
+    if (has(/ (susto|buu|surpresa) /)) return { e: 'surprised', say: 'Que susto!', ms: 1500 };
+    if (has(/ (bravo|idiota|burro|chato|feio|odeio) /)) return { e: 'sad', say: 'Isso doeu... snif.', ms: 3000, aff: -3 };
+    if (has(/ (oi|ola|e ai|opa|salve|fala|eai) /)) return { e: 'happy', say: pick(P.hello), ms: 2000, aff: 1 };
+    return null;
+  }
+
+  /* ---------- Olhar (dedo > inclinação > passeio) ---------- */
+  const look = { touch: null, tilt: { x: 0, y: 0 }, wander: { x: 0, y: 0 }, cur: { x: 0, y: 0 }, next: 0, level: 0 };
+  function lookLoop(now) {
+    const active = emotion === 'idle' || emotion === 'listening';
+    if (active && now > look.next) {
+      look.next = now + 1800 + Math.random() * 3200;
+      look.wander = Math.random() < 0.3 ? { x: 0, y: 0 } : { x: (Math.random() * 2 - 1) * 0.8, y: (Math.random() * 2 - 1) * 0.5 };
+    }
+    let t = { x: 0, y: 0 };
+    if (look.touch) t = look.touch;
+    else if (Math.hypot(look.tilt.x, look.tilt.y) > 0.12) t = look.tilt;
+    else if (active) t = look.wander;
+    look.cur.x += (t.x - look.cur.x) * 0.22;
+    look.cur.y += (t.y - look.cur.y) * 0.22;
+    const s = emotion === 'listening' ? 1 + look.level * 0.18 : 1;
+    el.eyesWrap.setAttribute('transform', `translate(${(look.cur.x * 15).toFixed(2)} ${(look.cur.y * 9).toFixed(2)}) translate(150 100) scale(${s.toFixed(3)}) translate(-150 -100)`);
+    el.mouthWrap.setAttribute('transform', `translate(${(look.cur.x * 6).toFixed(2)} 0)`);
+    requestAnimationFrame(lookLoop);
+  }
+
+  // Piscar
+  (function blinkLoop() {
+    setTimeout(() => {
+      if (['idle', 'listening', 'angry', 'sad', 'surprised'].includes(emotion)) {
+        el.eyes.setAttribute('transform', 'translate(0 100) scale(1 .08) translate(0 -100)');
+        setTimeout(() => el.eyes.removeAttribute('transform'), 120);
+      }
+      blinkLoop();
+    }, 2200 + Math.random() * 3200);
+  })();
+
+  /* ---------- Toque ---------- */
+  const g = { on: false, startT: 0, sx: 0, sy: 0, lx: 0, ly: 0, path: 0, moved: false, held: false, lastPet: 0, id: null };
+  let taps = [], holdTimer = 0;
+  const pointToLook = (x, y) => {
+    const r = $('#chassis').getBoundingClientRect();
+    look.touch = { x: clamp((x - (r.left + r.width / 2)) / (r.width / 2), -1, 1), y: clamp((y - (r.top + r.height / 2)) / (r.height / 2), -1, 1) };
+  };
+  el.bot.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    enableSensors();
+    try { el.bot.setPointerCapture(e.pointerId); } catch (_) { /* ok */ }
+    Object.assign(g, { on: true, startT: Date.now(), sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, path: 0, moved: false, held: false, lastPet: 0, id: e.pointerId });
+    el.bot.classList.add('pressed');
+    pointToLook(e.clientX, e.clientY);
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => {
+      if (g.on && !g.moved) {
+        g.held = true;
+        if (interact()) return;
+        emote('love', { ms: 60000, say: pick(P.hold), affection: 2 });
+        vibe('light');
+      }
+    }, CFG.holdMs);
+  });
+  el.bot.addEventListener('pointermove', (e) => {
+    if (!g.on) return;
+    g.path += Math.hypot(e.clientX - g.lx, e.clientY - g.ly);
+    g.lx = e.clientX; g.ly = e.clientY;
+    pointToLook(e.clientX, e.clientY);
+    if (!g.moved && Math.hypot(e.clientX - g.sx, e.clientY - g.sy) > 12) {
+      g.moved = true;
+      clearTimeout(holdTimer);
+      if (g.held) { g.held = false; emote('happy', { ms: 1200, force: true }); }
+    }
+    const now = Date.now();
+    if (g.path > CFG.petPath && now - g.lastPet > 1200) {
+      g.lastPet = now; g.path = 0;
+      if (interact()) return;
+      emote('love', { ms: 2400, say: pick(P.pet), haptic: 'success', affection: 3 });
+    }
+  });
+  function endTouch() {
+    if (!g.on) return;
+    g.on = false;
+    clearTimeout(holdTimer);
+    look.touch = null;
+    el.bot.classList.remove('pressed');
+    if (g.held) { g.held = false; emote('happy', { ms: 1200, force: true }); return; }
+    if (!g.moved && Date.now() - g.startT < 350) {
+      const now = Date.now();
+      taps = taps.filter((t) => now - t < 700).concat(now);
+      const n = taps.length;
+      if (n >= 6) taps = [];
+      if (interact()) return;
+      if (n >= 6) emote('dizzy', { ms: 3000, say: pick(P.tooMuch), haptic: 'warning' });
+      else if (n >= 3) emote('angry', { ms: 1800, say: pick(P.annoyed), haptic: 'warning', affection: -1 });
+      else if (n === 2) emote('happy', { ms: 1400, say: pick(P.giggle), haptic: 'light', affection: 1 });
+      else emote('happy', { ms: 1200, say: pick(P.poke), haptic: 'light', affection: 1 });
+    }
+  }
+  el.bot.addEventListener('pointerup', endTouch);
+  el.bot.addEventListener('pointercancel', endTouch);
+  el.bot.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!interact()) emote('happy', { ms: 1200, say: pick(P.poke), affection: 1 }); }
+  });
+
+  /* ---------- Sensores de movimento ---------- */
+  let sensorsOn = false, sensorSeen = false, sensorAsked = false;
+  const M = { s: null, b: null, lastT: 0, peaks: [], lastPeak: 0, lastShake: 0, fall: 0, lastFall: 0, flipSince: 0, flipped: false, spin: 0, lastSpin: 0 };
+  const norm3 = (v) => Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+
+  function onAcc(x, y, z, now) {
+    const dt = M.lastT ? Math.min(0.2, (now - M.lastT) / 1000) : 0.016;
+    M.lastT = now;
+    const s = (M.s = M.s || { x, y, z }), b = (M.b = M.b || { x, y, z });
+    const ks = 1 - Math.exp(-dt / 0.37), kb = 1 - Math.exp(-dt / 15);
+    s.x += (x - s.x) * ks; s.y += (y - s.y) * ks; s.z += (z - s.z) * ks;
+    const mag = Math.sqrt(x * x + y * y + z * z);
+
+    if (mag > CFG.shakePeakG && now - M.lastPeak > 110) { M.lastPeak = now; M.peaks.push(now); }
+    M.peaks = M.peaks.filter((t) => now - t < CFG.shakeWindowMs);
+    if (M.peaks.length >= CFG.shakeCount && now - M.lastShake > CFG.shakeCooldownMs) {
+      M.lastShake = now; M.peaks = [];
+      emote('dizzy', { ms: 3500, say: pick(P.dizzy), haptic: 'warning', energy: -3 });
+    }
+    if (mag < CFG.freeFallG) {
+      if (!M.fall) M.fall = now;
+      else if (now - M.fall > CFG.freeFallMs && now - M.lastFall > 3000) {
+        M.lastFall = now; M.fall = 0;
+        emote('surprised', { ms: 1800, say: pick(P.fall), haptic: 'heavy' });
+      }
+    } else if (mag > 0.5) M.fall = 0;
+
+    if (mag > 0.9 && mag < 1.1) { b.x += (s.x - b.x) * kb; b.y += (s.y - b.y) * kb; b.z += (s.z - b.z) * kb; }
+    look.tilt.x = clamp((s.x - b.x) * CFG.tiltGain * CFG.tiltSignX, -1, 1);
+    look.tilt.y = clamp((s.y - b.y) * CFG.tiltGain * CFG.tiltSignY, -1, 1);
+
+    const dot = (s.x * b.x + s.y * b.y + s.z * b.z) / ((norm3(s) * norm3(b)) || 1);
+    if (dot < CFG.flipDot) {
+      if (!M.flipSince) M.flipSince = now;
+      if (!M.flipped && now - M.flipSince > CFG.flipMs) { M.flipped = true; emote('surprised', { ms: 2600, say: pick(P.flip), haptic: 'light' }); }
+    } else if (dot > 0.3) { M.flipSince = 0; M.flipped = false; }
+  }
+  function onGyro(w, now) {
+    if (w > CFG.spinRad) {
+      if (!M.spin) M.spin = now;
+      else if (now - M.spin > CFG.spinMs && now - M.lastSpin > 4000) {
+        M.lastSpin = now; M.spin = 0;
+        emote('dizzy', { ms: 4500, say: pick(P.spin), haptic: 'warning', energy: -3 });
+      }
+    } else if (w < 2) M.spin = 0;
+  }
+  function onMotion(e) {
+    sensorSeen = true;
+    const now = performance.now(), a = e.accelerationIncludingGravity, r = e.rotationRate;
+    if (a && a.x != null && a.y != null && a.z != null) onAcc(a.x / 9.80665, a.y / 9.80665, a.z / 9.80665, now);
+    if (r && r.alpha != null) onGyro(Math.hypot(r.alpha, r.beta, r.gamma) * Math.PI / 180, now);
+    updateStatus();
+  }
+  async function enableSensors() {
+    if (sensorsOn || sensorAsked) return;
+    if (typeof DeviceMotionEvent === 'undefined') { updateStatus(); return; }
+    sensorAsked = true;
+    try {
+      if (typeof DeviceMotionEvent.requestPermission === 'function') {
+        const res = await DeviceMotionEvent.requestPermission();
+        if (res !== 'granted') { updateStatus('Sensores bloqueados. Permita o acesso a movimento nos ajustes do navegador.'); return; }
+      }
+      window.addEventListener('devicemotion', onMotion);
+      sensorsOn = true;
+      setTimeout(updateStatus, 2000);
+    } catch (e) { sensorAsked = false; updateStatus(); }
+  }
+  function updateStatus(forced) {
+    const parts = [];
+    if (forced) { el.status.textContent = forced; return; }
+    const why = () => ' (' + (window.isSecureContext ? 'conexão segura' : 'conexão NÃO segura: ' + location.protocol) + ')';
+    if (typeof DeviceMotionEvent === 'undefined') parts.push('Sensores indisponíveis aqui' + why());
+    else if (sensorSeen) parts.push('Sensores ativos');
+    else if (typeof DeviceMotionEvent.requestPermission === 'function' && !sensorsOn) parts.push('Toque no Pico para ativar os sensores');
+    else if (sensorsOn) parts.push('O navegador não enviou dados de movimento' + why());
+    parts.push(voiceOn ? 'Voz ligada' : 'Voz desligada');
+    el.status.textContent = parts.join(' · ');
+  }
+
+  /* ---------- Voz ---------- */
+  const SRc = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null;
+
+  function onTranscript(text) {
+    if (isTalking()) return;
+    const c = parseCommand(text);
+    if (!c) { emote('happy', { ms: 1800, say: pick(P.confused) }); return; }
+    emote(c.e, { ms: c.ms, say: c.say, affection: c.aff || 0, force: true });
+  }
+  function startVoice() {
+    return new Promise((resolve) => {
+      if (!SRc) { resolve('unsupported'); return; }
+      let settled = false;
+      const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+      try {
+        rec = new SRc();
+        rec.lang = 'pt-BR';
+        rec.continuous = true;
+        rec.interimResults = false;
+        rec.onstart = () => done('ok');
+        rec.onspeechstart = () => { if (!isTalking() && !interact()) emote('listening', { ms: 6000 }); };
+        rec.onresult = (e) => {
+          const r = e.results[e.results.length - 1];
+          if (r && r.isFinal) onTranscript(r[0].transcript);
+        };
+        rec.onerror = (e) => {
+          if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { voiceOn = false; syncButtons(); done('blocked'); }
+        };
+        rec.onend = () => { if (voiceOn) setTimeout(() => { try { rec.start(); } catch (_) { /* já rodando */ } }, 300); };
+        rec.start();
+        setTimeout(() => done('blocked'), 5000);
+      } catch (e) { done('blocked'); }
+    });
+  }
+  function stopVoice() {
+    voiceOn = false;
+    try { rec && rec.stop(); } catch (_) { /* ok */ }
+  }
+
+  /* ---------- Botões ---------- */
+  function syncButtons() {
+    $('#b-voice').setAttribute('aria-pressed', String(voiceOn));
+    $('#b-sound').setAttribute('aria-pressed', String(soundOn));
+    $('#wave').style.display = soundOn ? '' : 'none';
+    updateStatus();
+  }
+  $('#b-voice').addEventListener('click', async () => {
+    enableSensors();
+    if (voiceOn) {
+      stopVoice(); syncButtons();
+      emote('happy', { ms: 1500, say: 'Ok, parei de ouvir.' });
+      return;
+    }
+    voiceOn = true;
+    const r = await startVoice();
+    if (r === 'ok') {
+      syncButtons();
+      emote('listening', { ms: 1800, say: 'Pode falar, tô ouvindo!' });
+    } else {
+      voiceOn = false; syncButtons();
+      emote('sad', { ms: 3200, say: r === 'unsupported' ? 'Esse navegador não me deixa ouvir. Tente o Chrome.' : 'Preciso do microfone pra te ouvir.' });
+    }
+  });
+  $('#b-sound').addEventListener('click', () => {
+    soundOn = !soundOn;
+    if (!soundOn) { try { speechSynthesis.cancel(); } catch (_) { /* ok */ } }
+    syncButtons(); save();
+    if (soundOn) emote('happy', { ms: 1400, say: 'Voz ligada!' });
+  });
+  const tips = $('#tips');
+  $('#b-tips').addEventListener('click', () => { tips.hidden = false; $('#close').focus(); });
+  $('#close').addEventListener('click', () => { tips.hidden = true; });
+  tips.addEventListener('click', (e) => { if (e.target === tips) tips.hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') tips.hidden = true; });
+
+  /* ---------- Início ---------- */
+  const away = load();
+  drawMeters(); syncButtons(); draw();
+  requestAnimationFrame(lookLoop);
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission !== 'function') enableSensors();
+  updateStatus();
+  if (away > CFG.awayMs) emote('love', { ms: 2600, say: pick(P.miss) });
+  else emote('happy', { ms: 1800, say: pick(P.hello) });
+  window.addEventListener('pagehide', save);
+})();
+</script>
+</body></html>
